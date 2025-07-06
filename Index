@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Wózek Widłowy - Gra</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; overflow: hidden; 
+    background: #a0d8f0;
+    font-family: sans-serif;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #title {
+    margin: 20px 0 10px;
+    font-size: 36px;
+    font-weight: bold;
+    color: #222;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  }
+  #gameCanvas {
+    background: transparent;
+    display: block;
+    position: relative;
+    z-index: 10;
+    border: 2px solid #444;
+    border-radius: 10px;
+  }
+  #video-bg {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    pointer-events: none; /* żeby kliknięcia przechodziły dalej */
+    z-index: 1;
+    filter: brightness(0.6);
+  }
+</style>
+</head>
+<body>
+
+<div id="title">Wojciech Power</div>
+
+<!-- Wideo w tle -->
+<iframe id="video-bg"
+  src="https://www.youtube.com/embed/dSy2DcATYUo?autoplay=1&mute=1&loop=1&playlist=dSy2DcATYUo&controls=0&modestbranding=1&showinfo=0"
+  frameborder="0" allow="autoplay" allowfullscreen>
+</iframe>
+
+<!-- Kanwa do gry -->
+<canvas id="gameCanvas" width="800" height="200"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+
+  let gameOver = false;
+  let score = 0;
+
+  const forklift = {
+    x: 50,
+    y: height - 50,
+    width: 50,
+    height: 40,
+    yVelocity: 0,
+    gravity: 0.8,
+    jumpForce: -15,
+    onGround: true,
+    draw() {
+      ctx.fillStyle = '#444';
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(this.x + 10, this.y);
+      ctx.lineTo(this.x + 10, this.y - 20);
+      ctx.moveTo(this.x + 20, this.y);
+      ctx.lineTo(this.x + 20, this.y - 20);
+      ctx.moveTo(this.x + 30, this.y);
+      ctx.lineTo(this.x + 30, this.y - 20);
+      ctx.stroke();
+
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(this.x + 15, this.y + this.height, 10, 0, Math.PI * 2);
+      ctx.arc(this.x + 35, this.y + this.height, 10, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    update() {
+      this.yVelocity += this.gravity;
+      this.y += this.yVelocity;
+
+      if (this.y + this.height >= height - 10) {
+        this.y = height - 10 - this.height;
+        this.yVelocity = 0;
+        this.onGround = true;
+      } else {
+        this.onGround = false;
+      }
+    },
+    jump() {
+      if (this.onGround) {
+        this.yVelocity = this.jumpForce;
+        this.onGround = false;
+      }
+    },
+    getRect() {
+      return {x: this.x, y: this.y, width: this.width, height: this.height};
+    }
+  };
+
+  class Truck {
+    constructor() {
+      this.width = 80;
+      this.height = 40;
+      this.x = width + Math.random() * 200;
+      this.y = height - 50;
+      this.speed = 6;
+    }
+    draw() {
+      ctx.fillStyle = '#b22';
+      ctx.fillRect(this.x, this.y, this.width * 0.4, this.height * 0.7);
+      ctx.fillStyle = '#811';
+      ctx.fillRect(this.x + this.width * 0.4, this.y + this.height * 0.15, this.width * 0.6, this.height * 0.55);
+
+      ctx.fillStyle = '#222';
+      ctx.beginPath();
+      ctx.arc(this.x + 15, this.y + this.height, 12, 0, Math.PI * 2);
+      ctx.arc(this.x + this.width - 15, this.y + this.height, 12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    update() {
+      this.x -= this.speed;
+    }
+    getRect() {
+      return {x: this.x, y: this.y, width: this.width, height: this.height};
+    }
+  }
+
+  function isColliding(r1, r2) {
+    return !(r2.x > r1.x + r1.width || 
+             r2.x + r2.width < r1.x || 
+             r2.y > r1.y + r1.height ||
+             r2.y + r2.height < r1.y);
+  }
+
+  const trucks = [];
+  let spawnTimer = 0;
+  let spawnInterval = 90;
+
+  function resetGame() {
+    trucks.length = 0;
+    score = 0;
+    spawnTimer = 0;
+    gameOver = false;
+    forklift.y = height - 50;
+    forklift.yVelocity = 0;
+  }
+
+  function gameLoop() {
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.fillStyle = '#654321';
+    ctx.fillRect(0, height - 10, width, 10);
+
+    forklift.update();
+    forklift.draw();
+
+    spawnTimer++;
+    if (spawnTimer > spawnInterval) {
+      trucks.push(new Truck());
+      spawnTimer = 0;
+      if (spawnInterval > 40) spawnInterval -= 1;
+    }
+
+    for (let i = trucks.length - 1; i >= 0; i--) {
+      trucks[i].update();
+      trucks[i].draw();
+
+      if (isColliding(forklift.getRect(), trucks[i].getRect())) {
+        gameOver = true;
+      }
+
+      if (trucks[i].x + trucks[i].width < 0) {
+        trucks.splice(i, 1);
+        score++;
+      }
+    }
+
+    ctx.fillStyle = '#000';
+    ctx.font = '20px Arial';
+    ctx.fillText(`Wynik: ${score}`, 10, 30);
+
+    if (gameOver) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = '#fff';
+      ctx.font = '30px Arial';
+      ctx.fillText('Koniec gry! Dotknij lub kliknij, aby zagrać ponownie.', 50, height / 2);
+      return;
+    }
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  function jumpHandler() {
+    if (gameOver) {
+      resetGame();
+      gameLoop();
+    } else {
+      forklift.jump();
+    }
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      jumpHandler();
+    }
+  });
+
+  window.addEventListener('mousedown', e => {
+    jumpHandler();
+  });
+
+  window.addEventListener('touchstart', e => {
+    e.preventDefault();
+    jumpHandler();
+  }, {passive: false});
+
+  resetGame();
+  gameLoop();
+
+})();
+</script>
+
+</body>
+</html>
